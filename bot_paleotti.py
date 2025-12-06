@@ -18,7 +18,7 @@ from telegram.ext import (
 # ================== CONFIGURAZIONE BASE ==================
 
 # 👉 METTI QUI IL TUO TOKEN
-BOT_TOKEN = "8556329067:AAECHaOam9kVqsnu9kCCSERCs7qPFzbvHnY"
+BOT_TOKEN = "8556329067:AAG01gKTjkia1clf9L29EwsboyCS_hgRkQc"
 
 # 👉 ID DELLE PERSONE CHE DEVONO RICEVERE L'ORDINE
 OWNER_CHAT_IDS = [
