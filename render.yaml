@@ -1,9 +1,8 @@
 services:
-  - type: worker
+  - type: web
     name: paleotti-bot
     env: python
-    region: frankfurt
     plan: free
-    autoDeploy: true
-    buildCommand: pip install -r requirements.txt
+    buildCommand: ""
     startCommand: bash start.sh
+    autoDeploy: true
