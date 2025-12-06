@@ -1,3 +1,3 @@
 #!/bin/bash
 echo "Avvio Bot PALEOTTI..."
-python bot_paleotti.py
+python3 bot_paleotti.py
