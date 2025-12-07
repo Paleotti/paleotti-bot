@@ -848,7 +848,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error("Eccezione nel bot", exc_info=context.error)
 
 
-async def main() -> None:
+def main() -> None:
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -859,10 +859,8 @@ async def main() -> None:
     app.add_error_handler(error_handler)
 
     logger.info("Bot PALEOTTI avviato.")
-    await app.run_polling(close_loop=False)
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())
+    main()
