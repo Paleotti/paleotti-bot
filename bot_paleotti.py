@@ -17,14 +17,14 @@ from telegram.ext import (
 
 # ================== CONFIGURAZIONE BASE ==================
 
-# <<< METTI QUI IL TUO TOKEN (oppure lascia quello che hai già) >>>
+# TOKEN DEL BOT (puoi lasciarlo così se è quello giusto)
 BOT_TOKEN = "8556329067:AAG01gKTjkia1clf9L29EwsboyCS_hgRkQc"
 
-# <<< ID DELLE PERSONE CHE DEVONO RICEVERE L'ORDINE >>>
+# ID DELLE PERSONE CHE DEVONO RICEVERE L'ORDINE
 OWNER_CHAT_IDS = [
-    6260926202,  # <--- PALEOTTI
-    1189411829,  # <--- Brossin
-    1041813873,  # <--- RobyIris88
+    6260926202,  # PALEOTTI
+    1189411829,  # Brossin
+    1041813873,  # RobyIris88
 ]
 
 # ================== DATI PRODOTTI ==================
@@ -269,7 +269,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Dizionario prodotti rapido per id
+# Dizionario rapido per id
 PRODUCTS_BY_ID = {p["id"]: p for p in PRODUCTS}
 
 
@@ -308,15 +308,11 @@ def format_cart(cart: Dict[str, int]) -> str:
 
 
 def build_main_menu() -> InlineKeyboardMarkup:
-    """
-    Menu “di base” a cui torna il tasto INDIETRO:
-    in pratica è la schermata di partenza con tutti i prodotti.
-    """
+    """Menu principale con tutti i prodotti (start / indietro)."""
     return build_products_keyboard()
 
 
 def build_products_keyboard() -> InlineKeyboardMarkup:
-    # Un pulsante per ogni prodotto
     rows = []
     for p in PRODUCTS:
         rows.append(
@@ -328,22 +324,14 @@ def build_products_keyboard() -> InlineKeyboardMarkup:
             ]
         )
 
-    # Riga carrello + help
     rows.append(
-        [
-            InlineKeyboardButton("🧺 Vai al carrello", callback_data="cart:show"),
-        ]
+        [InlineKeyboardButton("🧺 Vai al carrello", callback_data="cart:show")]
     )
     rows.append(
-        [
-            InlineKeyboardButton("🆘 Help", callback_data="menu:help"),
-        ]
+        [InlineKeyboardButton("🆘 Help", callback_data="menu:help")]
     )
-    # Indietro (torna alla stessa schermata, ma è coerente con la richiesta)
     rows.append(
-        [
-            InlineKeyboardButton("⬅️ Indietro", callback_data="menu:main"),
-        ]
+        [InlineKeyboardButton("⬅️ Indietro", callback_data="menu:main")]
     )
     return InlineKeyboardMarkup(rows)
 
@@ -351,7 +339,9 @@ def build_products_keyboard() -> InlineKeyboardMarkup:
 def build_cart_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
-            InlineKeyboardButton("➕ Aggiungi altri prodotti", callback_data="menu:order"),
+            InlineKeyboardButton(
+                "➕ Aggiungi altri prodotti", callback_data="menu:order"
+            ),
         ],
         [
             InlineKeyboardButton("🧹 Svuota carrello", callback_data="cart:clear"),
@@ -497,7 +487,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await query.edit_message_html(HELP_TEXT, reply_markup=build_main_menu())
         return
 
-    # Schermata "scegli prodotti"
+    # Schermata “scegli prodotti”
     if data == "menu:order":
         await query.edit_message_text(
             "Scegli i prodotti da aggiungere al carrello:",
@@ -820,8 +810,9 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     full_name = f"{order.get('first_name', '-') } {order.get('last_name', '')}".strip()
     lines.append(f"Nome e cognome: {full_name}")
     lines.append(f"Indirizzo: {order.get('customer_address', '-')}")
+
     lines.append(
-        f"Città / Provincia / CAP: "
+        "Città / Provincia / CAP: "
         f"{order.get('customer_city', '-')}, "
         f"{order.get('customer_province', '-')}, "
         f"{order.get('customer_cap', '-')}"
@@ -859,6 +850,7 @@ def main() -> None:
     app.add_error_handler(error_handler)
 
     logger.info("Bot PALEOTTI avviato.")
+    # PTB 20: metodo sincrono, nessun asyncio.run
     app.run_polling()
 
 
