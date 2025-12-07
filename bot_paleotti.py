@@ -17,7 +17,7 @@ from telegram.ext import (
 
 # ================== CONFIGURAZIONE BASE ==================
 
-# <<< METTI QUI IL TUO TOKEN >>>
+# <<< METTI QUI IL TUO TOKEN (oppure lascia quello che hai già) >>>
 BOT_TOKEN = "8556329067:AAG01gKTjkia1clf9L29EwsboyCS_hgRkQc"
 
 # <<< ID DELLE PERSONE CHE DEVONO RICEVERE L'ORDINE >>>
@@ -308,35 +308,38 @@ def format_cart(cart: Dict[str, int]) -> str:
 
 
 def build_main_menu() -> InlineKeyboardMarkup:
-    keyboard = [
-        [
-            InlineKeyboardButton("📦 Catalogo prodotti", callback_data="menu:catalog"),
-            InlineKeyboardButton("🛒 Fai un ordine", callback_data="menu:order"),
-        ],
-        [
-            InlineKeyboardButton("ℹ️ Assistenza", callback_data="menu:help"),
-        ],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+    """
+    Menu “di base” a cui torna il tasto INDIETRO:
+    in pratica è la schermata di partenza con tutti i prodotti.
+    """
+    return build_products_keyboard()
 
 
 def build_products_keyboard() -> InlineKeyboardMarkup:
-    # Un pulsante per aggiungere ogni prodotto + pulsanti carrello
+    # Un pulsante per ogni prodotto
     rows = []
     for p in PRODUCTS:
         rows.append(
             [
                 InlineKeyboardButton(
                     f"{p['name']} ({format_price(p['price'])})",
-                    callback_data=f"add:{p['id']}",
+                    callback_data=f"prod:{p['id']}",
                 )
             ]
         )
+
+    # Riga carrello + help
     rows.append(
         [
-            InlineKeyboardButton("🧺 Vedi carrello", callback_data="cart:show"),
+            InlineKeyboardButton("🧺 Vai al carrello", callback_data="cart:show"),
         ]
     )
+    rows.append(
+        [
+            InlineKeyboardButton("🆘 Help", callback_data="menu:help"),
+        ]
+    )
+    # Indietro (torna alla stessa schermata, ma è coerente con la richiesta)
     rows.append(
         [
             InlineKeyboardButton("⬅️ Indietro", callback_data="menu:main"),
@@ -397,22 +400,69 @@ def build_payment_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def build_after_add_keyboard() -> InlineKeyboardMarkup:
+    """Dopo aver aggiunto un prodotto: aggiungi altro o vai al carrello."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "➕ Aggiungi altri prodotti", callback_data="menu:order"
+                )
+            ],
+            [
+                InlineKeyboardButton("🧺 Vai al carrello", callback_data="cart:show"),
+            ],
+            [
+                InlineKeyboardButton("⬅️ Indietro", callback_data="menu:main"),
+            ],
+        ]
+    )
+
+
+def build_summary_keyboard() -> InlineKeyboardMarkup:
+    """Tastiera sotto al riepilogo finale."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📤 Invia ordine", callback_data="order:confirm"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "✏️ Modifica carrello", callback_data="order:edit_cart"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "❌ Annulla tutto", callback_data="order:cancel"
+                ),
+            ],
+            [
+                InlineKeyboardButton("🆘 Help", callback_data="order:help"),
+            ],
+        ]
+    )
+
+
 # ================== HANDLER COMANDI ==================
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_data = context.user_data
     user_data.clear()
+
     text = (
-        "Benvenuto nel bot PALEOTTI! 🎄\n\n"
-        "Puoi vedere il catalogo, aggiungere prodotti al carrello e inviare il tuo ordine.\n\n"
+        "Benvenuto nel mondo PALEOTTI - Natura ad ogni morso! 🌿\n\n"
+        "Da qui puoi ordinare tutti i nostri prodotti, cominciamo!\n\n"
         f"{BISCOTTI_NOTE}"
     )
+
     if update.message:
-        await update.message.reply_text(text, reply_markup=build_main_menu())
+        await update.message.reply_text(text, reply_markup=build_products_keyboard())
     else:
         await update.callback_query.message.reply_text(
-            text, reply_markup=build_main_menu()
+            text, reply_markup=build_products_keyboard()
         )
 
 
@@ -433,28 +483,21 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_data = context.user_data
     cart = get_cart(user_data)
 
-    # Menu
+    # Menu principale
     if data == "menu:main":
         await query.edit_message_text(
-            "Seleziona una voce dal menu:", reply_markup=build_main_menu()
-        )
-        return
-
-    if data == "menu:catalog":
-        # Mostro elenco con descrizioni
-        lines = []
-        for p in PRODUCTS:
-            lines.append(f"<b>{p['name']}</b> – {format_price(p['price'])}")
-            lines.append(p["description"])
-            lines.append("")
-        text = "\n".join(lines)
-        await query.edit_message_text(
-            text=text,
-            parse_mode="HTML",
+            "Benvenuto nel mondo PALEOTTI - Natura ad ogni morso!\n\n"
+            "Da qui puoi ordinare tutti i nostri prodotti, cominciamo!",
             reply_markup=build_products_keyboard(),
         )
         return
 
+    # Help da menu
+    if data == "menu:help":
+        await query.edit_message_html(HELP_TEXT, reply_markup=build_main_menu())
+        return
+
+    # Schermata "scegli prodotti"
     if data == "menu:order":
         await query.edit_message_text(
             "Scegli i prodotti da aggiungere al carrello:",
@@ -462,20 +505,32 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    if data == "menu:help":
-        await query.edit_message_html(HELP_TEXT, reply_markup=build_main_menu())
-        return
-
-    # Aggiunta prodotto
-    if data.startswith("add:"):
+    # Click su un prodotto: mostra dettagli e chiede quantità
+    if data.startswith("prod:"):
         pid = data.split(":", 1)[1]
-        if pid in PRODUCTS_BY_ID:
-            cart[pid] = cart.get(pid, 0) + 1
-            product = PRODUCTS_BY_ID[pid]
-            await query.answer(
-                text=f"Aggiunto: {product['name']}", show_alert=False
-            )
-        await query.edit_message_reply_markup(reply_markup=build_products_keyboard())
+        product = PRODUCTS_BY_ID.get(pid)
+        if not product:
+            return
+
+        user_data["pending_product"] = pid
+        user_data["state"] = "ASK_QTY"
+
+        text = (
+            f"<b>{product['name']}</b>\n"
+            f"Prezzo: {format_price(product['price'])}\n\n"
+            f"{product['description']}\n\n"
+            "Scrivi il <b>numero di pezzi</b> che vuoi aggiungere al carrello "
+            "(es. 3)."
+        )
+        await query.edit_message_text(
+            text=text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [InlineKeyboardButton("⬅️ Indietro", callback_data="menu:main")],
+                ]
+            ),
+        )
         return
 
     # Carrello
@@ -542,6 +597,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
+    # Scelta pagamento → inizio flusso dati cliente
     if data.startswith("pay:"):
         pay_id = data.split(":", 1)[1]
         method = next((m for m in PAYMENT_METHODS if m["id"] == pay_id), None)
@@ -551,15 +607,57 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         order["payment_id"] = pay_id
         order["payment_label"] = method["label"]
 
-        # Ora iniziamo a chiedere i dati del cliente
-        user_data["state"] = "ASK_NAME"
-        if query.message.chat.type in ("group", "supergroup"):
-            prefix = "Ti scrivo in privato per completare l'ordine."
-        else:
-            prefix = ""
+        user_data["state"] = "ASK_FIRST_NAME"
         await query.edit_message_text(
-            f"{prefix}\n\nCome ti chiami? (Nome e Cognome)",
+            "Perfetto! Ora ti chiedo alcuni dati per la spedizione.\n\n"
+            "Inserisci il <b>nome</b>:",
+            parse_mode="HTML",
         )
+        return
+
+    # Pulsanti dal riepilogo
+    if data == "order:confirm":
+        summary = user_data.get("last_summary")
+        if not summary:
+            await query.answer(
+                "Nessun ordine da inviare, ricomincia da /start.", show_alert=True
+            )
+            return
+
+        # Invia ai proprietari
+        for owner_id in OWNER_CHAT_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=owner_id,
+                    text=summary,
+                    parse_mode="HTML",
+                )
+            except Exception as e:
+                logger.error(f"Errore nell'invio dell'ordine a {owner_id}: {e}")
+
+        user_data.clear()
+        await query.edit_message_text(
+            "✅ Il tuo ordine è stato inviato! Grazie 🙏\n\n"
+            "Per qualsiasi dubbio puoi usare il tasto Help o contattare l'assistenza.",
+        )
+        return
+
+    if data == "order:edit_cart":
+        text = f"🧺 <b>Il tuo carrello</b>\n\n{format_cart(cart)}"
+        await query.edit_message_text(
+            text=text, parse_mode="HTML", reply_markup=build_cart_keyboard()
+        )
+        return
+
+    if data == "order:cancel":
+        user_data.clear()
+        await query.edit_message_text(
+            "L'ordine è stato annullato. Puoi ricominciare quando vuoi con /start.",
+        )
+        return
+
+    if data == "order:help":
+        await query.edit_message_html(HELP_TEXT, reply_markup=build_main_menu())
         return
 
 
@@ -573,10 +671,10 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_data = context.user_data
     state: Optional[str] = user_data.get("state")
 
+    # Nessun flusso attivo → mostro menu prodotti
     if not state:
-        # Nessun flusso attivo → mostro menu
         await update.message.reply_text(
-            "Usa il menu per navigare nel bot.",
+            "Usa i pulsanti qui sotto per navigare nel bot.",
             reply_markup=build_main_menu(),
         )
         return
@@ -584,26 +682,96 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     text = update.message.text.strip()
     order = user_data.setdefault("order", {})
 
-    if state == "ASK_NAME":
-        order["customer_name"] = text
+    # 1) Quantità prodotto
+    if state == "ASK_QTY":
+        pid = user_data.get("pending_product")
+        product = PRODUCTS_BY_ID.get(pid) if pid else None
+        if not product:
+            user_data["state"] = None
+            await update.message.reply_text(
+                "Qualcosa è andato storto con il prodotto selezionato. Riprova.",
+                reply_markup=build_products_keyboard(),
+            )
+            return
+
+        try:
+            qty = int(text)
+            if qty <= 0:
+                raise ValueError()
+        except ValueError:
+            await update.message.reply_text(
+                "Per favore inserisci un numero intero positivo (es. 3)."
+            )
+            return
+
+        cart = get_cart(user_data)
+        cart[pid] = cart.get(pid, 0) + qty
+        user_data["state"] = None
+        user_data["pending_product"] = None
+
+        await update.message.reply_text(
+            f"Hai aggiunto {qty} x {product['name']} al carrello.\n\n"
+            "Vuoi aggiungere altri prodotti o andare al carrello?",
+            reply_markup=build_after_add_keyboard(),
+        )
+        return
+
+    # 2) Dati cliente step-by-step
+
+    if state == "ASK_FIRST_NAME":
+        order["first_name"] = text
+        user_data["state"] = "ASK_LAST_NAME"
+        await update.message.reply_text("Inserisci il <b>cognome</b>:", parse_mode="HTML")
+        return
+
+    if state == "ASK_LAST_NAME":
+        order["last_name"] = text
         user_data["state"] = "ASK_ADDRESS"
-        await update.message.reply_text("Indirizzo completo (via, n°, CAP, città):")
+        await update.message.reply_text(
+            "Inserisci l'<b>indirizzo completo</b> (via e numero civico):",
+            parse_mode="HTML",
+        )
         return
 
     if state == "ASK_ADDRESS":
         order["customer_address"] = text
+        user_data["state"] = "ASK_CITY"
+        await update.message.reply_text("Inserisci la <b>città</b>:", parse_mode="HTML")
+        return
+
+    if state == "ASK_CITY":
+        order["customer_city"] = text
+        user_data["state"] = "ASK_PROVINCE"
+        await update.message.reply_text(
+            "Inserisci la <b>provincia</b>:", parse_mode="HTML"
+        )
+        return
+
+    if state == "ASK_PROVINCE":
+        order["customer_province"] = text
+        user_data["state"] = "ASK_CAP"
+        await update.message.reply_text("Inserisci il <b>CAP</b>:", parse_mode="HTML")
+        return
+
+    if state == "ASK_CAP":
+        order["customer_cap"] = text
+        user_data["state"] = "ASK_INTERCOM"
+        await update.message.reply_text(
+            "Cognome scritto sul <b>citofono</b>:", parse_mode="HTML"
+        )
+        return
+
+    if state == "ASK_INTERCOM":
+        order["customer_intercom"] = text
         user_data["state"] = "ASK_PHONE"
-        await update.message.reply_text("Numero di telefono:")
+        await update.message.reply_text(
+            "Numero di <b>telefono</b> per il corriere / contatti:",
+            parse_mode="HTML",
+        )
         return
 
     if state == "ASK_PHONE":
         order["customer_phone"] = text
-        user_data["state"] = "ASK_EMAIL"
-        await update.message.reply_text("Email (opzionale, puoi anche scrivere 'nessuna'):")
-        return
-
-    if state == "ASK_EMAIL":
-        order["customer_email"] = text
         user_data["state"] = "ASK_NOTES"
         await update.message.reply_text(
             "Note aggiuntive per l'ordine (allergie, orari, campanello, ecc.).\n"
@@ -619,7 +787,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Costruisce il riepilogo e lo manda al cliente e agli owner."""
+    """Costruisce il riepilogo e lo mostra al cliente con i pulsanti finali."""
     user_data = context.user_data
     cart = get_cart(user_data)
     order = user_data.get("order", {})
@@ -629,15 +797,13 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     total = products_total + shipping_cost
 
     lines = []
-    lines.append("🧾 <b>Nuovo ordine PALEOTTI</b>\n")
+    lines.append("🧾 <b>Riepilogo ordine PALEOTTI</b>\n")
     lines.append("📦 <b>Prodotti</b>")
     for pid, qty in cart.items():
         p = PRODUCTS_BY_ID.get(pid)
         if not p:
             continue
-        lines.append(
-            f"• {p['name']} x {qty} = {format_price(p['price'] * qty)}"
-        )
+        lines.append(f"• {p['name']} x {qty} = {format_price(p['price'] * qty)}")
     lines.append(f"\nSubtotale prodotti: {format_price(products_total)}")
 
     lines.append("\n🚚 <b>Spedizione</b>")
@@ -651,34 +817,28 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     lines.append(f"Metodo: {order.get('payment_label', '-')}")
 
     lines.append("\n👤 <b>Dati cliente</b>")
-    lines.append(f"Nome: {order.get('customer_name', '-')}")
+    full_name = f"{order.get('first_name', '-') } {order.get('last_name', '')}".strip()
+    lines.append(f"Nome e cognome: {full_name}")
     lines.append(f"Indirizzo: {order.get('customer_address', '-')}")
+    lines.append(
+        f"Città / Provincia / CAP: "
+        f"{order.get('customer_city', '-')}, "
+        f"{order.get('customer_province', '-')}, "
+        f"{order.get('customer_cap', '-')}"
+    )
+    lines.append(f"Citofono: {order.get('customer_intercom', '-')}")
     lines.append(f"Telefono: {order.get('customer_phone', '-')}")
-    lines.append(f"Email: {order.get('customer_email', '-')}")
     lines.append(f"Note: {order.get('customer_notes', '-')}")
 
     lines.append(f"\n💰 <b>TOTALE:</b> {format_price(total)}")
 
     summary = "\n".join(lines)
+    user_data["last_summary"] = summary  # servirà quando preme "Invia ordine"
 
-    # Invia al cliente
     await update.message.reply_html(
-        text="Grazie! Questo è il riepilogo del tuo ordine:\n\n" + summary
+        text=summary,
+        reply_markup=build_summary_keyboard(),
     )
-
-    # Invia ai proprietari
-    for owner_id in OWNER_CHAT_IDS:
-        try:
-            await context.bot.send_message(
-                chat_id=owner_id,
-                text=summary,
-                parse_mode="HTML",
-            )
-        except Exception as e:
-            logger.error(f"Errore nell'invio dell'ordine a {owner_id}: {e}")
-
-    # Reset carrello e ordine
-    user_data.clear()
 
 
 # ================== MAIN ==================
