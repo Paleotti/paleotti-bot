@@ -19,6 +19,7 @@ from telegram.ext import (
 
 BOT_TOKEN = "8556329067:AAG01gKTjkia1clf9L29EwsboyCS_hgRkQc"
 
+# chat_id degli admin che ricevono gli ordini
 OWNER_CHAT_IDS = [
     6260926202,
     1189411829,
@@ -263,11 +264,13 @@ HELP_TEXT = (
 )
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
 # ================== UTILITY ==================
+
 
 def get_product_by_id(product_id: str) -> Optional[Dict[str, Any]]:
     for p in PRODUCTS:
@@ -293,7 +296,7 @@ def get_payment_method(pay_id: str) -> Optional[Dict[str, Any]]:
 def format_cart(cart: List[Dict[str, Any]]) -> str:
     if not cart:
         return "Nessun prodotto nel carrello."
-    lines = []
+    lines: List[str] = []
     total = 0.0
     for item in cart:
         subtotal = item["price"] * item["qty"]
@@ -312,14 +315,17 @@ def calc_cart_total(cart: List[Dict[str, Any]], shipping_cost: float) -> float:
 
 def base_keyboard_help_row() -> List[InlineKeyboardButton]:
     return [InlineKeyboardButton("HELP", callback_data="HELP")]
+
 # ================== SCHERMATE PRINCIPALI ==================
 
+
 async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Schermata principale con la lista dei prodotti."""
     context.user_data.setdefault("cart", [])
     context.user_data["step"] = "products"
 
-    keyboard = []
-    row = []
+    keyboard: List[List[InlineKeyboardButton]] = []
+    row: List[InlineKeyboardButton] = []
 
     for i, product in enumerate(PRODUCTS, start=1):
         row.append(
@@ -348,7 +354,11 @@ async def show_main_menu(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def show_product_details(chat_id: int, context: ContextTypes.DEFAULT_TYPE, product: Dict[str, Any]) -> None:
+async def show_product_details(
+    chat_id: int,
+    context: ContextTypes.DEFAULT_TYPE,
+    product: Dict[str, Any],
+) -> None:
     context.user_data["current_product_id"] = product["id"]
     context.user_data["step"] = "quantity"
 
@@ -435,8 +445,8 @@ async def ask_shipping(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None
 async def ask_hand_zone(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["step"] = "hand_zone"
 
-    keyboard = []
-    row = []
+    keyboard: List[List[InlineKeyboardButton]] = []
+    row: List[InlineKeyboardButton] = []
     for i, zona in enumerate(HAND_ZONES, start=1):
         row.append(InlineKeyboardButton(zona, callback_data=f"HANDZONE_{i}"))
         if i % 2 == 0:
@@ -453,6 +463,8 @@ async def ask_hand_zone(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> Non
         text="Scegli la zona per la consegna a mano:",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
 async def ask_payment(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
     context.user_data["step"] = "payment"
 
@@ -485,7 +497,9 @@ async def show_summary(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None
     payment = get_payment_method(payment_id)
 
     if not cart or not shipping or not payment:
-        await context.bot.send_message(chat_id, "Errore: dati ordine incompleti. Riprova con /start")
+        await context.bot.send_message(
+            chat_id, "Errore: dati ordine incompleti. Riprova con /start"
+        )
         context.user_data.clear()
         return
 
@@ -557,8 +571,14 @@ async def show_help_screen(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
             InlineKeyboardButton("Telegram", url="https://t.me/Paleotti"),
         ],
         [
-            InlineKeyboardButton("Canale WhatsApp", url="https://www.whatsapp.com/channel/0029VbBmVPmHbFVCJe95521W"),
-            InlineKeyboardButton("Canale Telegram", url="https://t.me/+dtOXjMQfZD9lZGI0"),
+            InlineKeyboardButton(
+                "Canale WhatsApp",
+                url="https://www.whatsapp.com/channel/0029VbBmVPmHbFVCJe95521W",
+            ),
+            InlineKeyboardButton(
+                "Canale Telegram",
+                url="https://t.me/+dtOXjMQfZD9lZGI0",
+            ),
         ],
     ]
 
@@ -581,7 +601,10 @@ async def return_from_help(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
     if prev == "quantity":
         pid = context.user_data.get("current_product_id")
         product = get_product_by_id(pid)
-        await show_product_details(chat_id, context, product)
+        if product:
+            await show_product_details(chat_id, context, product)
+        else:
+            await show_main_menu(chat_id, context)
         return
 
     if prev == "add_more":
@@ -605,10 +628,17 @@ async def return_from_help(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     await show_main_menu(chat_id, context)
+
+# ================== CALLBACK DEI PULSANTI ==================
+
+
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
+    if not query:
+        return
+
     data = query.data or ""
-    chat_id = query.message.chat_id
+    chat_id = update.effective_chat.id
     await query.answer()
 
     # ================= HELP =================
@@ -643,7 +673,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         product = get_product_by_id(product_id)
 
         if not product:
-            await context.bot.send_message(chat_id, "Errore: prodotto non trovato. Riprova con /start")
+            await context.bot.send_message(
+                chat_id, "Errore: prodotto non trovato. Riprova con /start"
+            )
             return
 
         await show_product_details(chat_id, context, product)
@@ -660,12 +692,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         cart = context.user_data.setdefault("cart", [])
-        cart.append({
-            "product_id": product["id"],
-            "name": product["name"],
-            "price": product["price"],
-            "qty": qty,
-        })
+        cart.append(
+            {
+                "product_id": product["id"],
+                "name": product["name"],
+                "price": product["price"],
+                "qty": qty,
+            }
+        )
 
         await ask_add_more(chat_id, context)
         return
@@ -686,7 +720,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         shipping = get_shipping_option(ship_id)
 
         if not shipping:
-            await context.bot.send_message(chat_id, "Errore nella selezione della spedizione.")
+            await context.bot.send_message(
+                chat_id, "Errore nella selezione della spedizione."
+            )
             return
 
         context.user_data["shipping_id"] = ship_id
@@ -705,7 +741,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "Per la spedizione con corriere ho bisogno dei tuoi dati.\n\n"
                 "👉 Inserisci il tuo <b>nome</b>:",
                 parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
         else:
             await ask_hand_zone(chat_id, context)
@@ -718,7 +754,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         zona = HAND_ZONES[idx] if 0 <= idx < len(HAND_ZONES) else None
 
         if not zona:
-            await context.bot.send_message(chat_id, "Errore nella scelta della zona.")
+            await context.bot.send_message(
+                chat_id, "Errore nella scelta della zona."
+            )
             return
 
         sd = context.user_data.setdefault("shipping_data", {})
@@ -733,7 +771,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         payment = get_payment_method(pay_id)
 
         if not payment:
-            await context.bot.send_message(chat_id, "Errore nella selezione del pagamento.")
+            await context.bot.send_message(
+                chat_id, "Errore nella selezione del pagamento."
+            )
             return
 
         context.user_data["payment_id"] = pay_id
@@ -745,7 +785,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         choice = data.replace("CONFIRM_", "")
 
         if choice == "no":
-            await context.bot.send_message(chat_id, "Ordine annullato. Puoi ripartire con /start")
+            await context.bot.send_message(
+                chat_id, "Ordine annullato. Puoi ripartire con /start"
+            )
             context.user_data.clear()
             return
 
@@ -762,7 +804,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         total = calc_cart_total(cart, shipping_cost)
 
         cart_text = format_cart(cart)
-        shipping_text = shipping["label"] + (f" +{shipping_cost:.2f} €" if shipping_cost > 0 else "")
+        shipping_text = shipping["label"] + (
+            f" +{shipping_cost:.2f} €" if shipping_cost > 0 else ""
+        )
         payment_text = payment["label"]
 
         # --- BLOCCHI SPEDIZIONE ---
@@ -782,7 +826,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 f"Citofono: {shipping_data.get('citofono')}\n"
             )
 
-            shipping_block_owner = shipping_block_user.replace("<b>", "").replace("</b>", "")
+            shipping_block_owner = shipping_block_user.replace(
+                "<b>", ""
+            ).replace("</b>", "")
 
         elif shipping_id == "hand":
             zona = shipping_data.get("zona_hand")
@@ -829,12 +875,15 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     # Se arriva qui, nessun comando riconosciuto
     await context.bot.send_message(chat_id, "Azione non riconosciuta. Usa /start.")
+
 # ================== HANDLER TESTO (DATI SPEDIZIONE) ==================
+
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     step = context.user_data.get("step")
     if not step or not step.startswith("ship_"):
-        return  # Ignora messaggi non relativi ai dati spedizione
+        # Messaggi normali ignorati se non stiamo raccogliendo i dati per la spedizione
+        return
 
     chat_id = update.effective_chat.id
     text = (update.message.text or "").strip()
@@ -844,7 +893,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_name":
         sd["nome"] = text
         context.user_data["step"] = "ship_surname"
-
         await update.message.reply_text("Inserisci il tuo cognome:")
         return
 
@@ -852,7 +900,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_surname":
         sd["cognome"] = text
         context.user_data["step"] = "ship_phone"
-
         await update.message.reply_text("Inserisci il tuo numero di telefono:")
         return
 
@@ -860,15 +907,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_phone":
         sd["telefono"] = text
         context.user_data["step"] = "ship_address"
-
-        await update.message.reply_text("Inserisci il tuo indirizzo completo (via + numero civico):")
+        await update.message.reply_text(
+            "Inserisci il tuo indirizzo completo (via + numero civico):"
+        )
         return
 
     # INDIRIZZO
     if step == "ship_address":
         sd["indirizzo"] = text
         context.user_data["step"] = "ship_cap"
-
         await update.message.reply_text("Inserisci il CAP:")
         return
 
@@ -876,7 +923,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_cap":
         sd["cap"] = text
         context.user_data["step"] = "ship_city"
-
         await update.message.reply_text("Inserisci la città:")
         return
 
@@ -884,7 +930,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_city":
         sd["citta"] = text
         context.user_data["step"] = "ship_province"
-
         await update.message.reply_text("Inserisci la provincia:")
         return
 
@@ -892,7 +937,6 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_province":
         sd["provincia"] = text
         context.user_data["step"] = "ship_citofono"
-
         await update.message.reply_text("Inserisci il cognome sul citofono:")
         return
 
@@ -900,27 +944,41 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if step == "ship_citofono":
         sd["citofono"] = text
         context.user_data["step"] = "shipping_done"
-
         await update.message.reply_text("Perfetto! Ora scegli il metodo di pagamento.")
         await ask_payment(chat_id, context)
         return
 
+# ================== COMANDI BASE ==================
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Comando /start: ripulisce lo stato dell'utente e mostra il menu principale.
+    Compatibile con python-telegram-bot 21+.
+    """
+    chat_id = update.effective_chat.id
+    context.user_data.clear()
+    await show_main_menu(chat_id, context)
+
 
 # ================== ERROR LOGGING ==================
 
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error(f"Errore: {context.error}")
+    logger.error("Errore nel bot", exc_info=context.error)
 
 
 # ================== MAIN ==================
 
+
 def main() -> None:
+    # Costruisce l'app in stile nuovo (nessun Updater)
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # Comandi
     app.add_handler(CommandHandler("start", start))
 
-    # Pulsanti
+    # Pulsanti inline
     app.add_handler(CallbackQueryHandler(callback_handler))
 
     # Messaggi di testo (per indirizzi spedizione)
